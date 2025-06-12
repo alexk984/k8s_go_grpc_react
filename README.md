@@ -89,32 +89,40 @@ docker-compose ps
 # Проверка здоровья
 curl http://localhost:8081/health
 
-# Получение списка пользователей
-curl http://localhost:8081/api/users
-
-# Создание пользователя
-curl -X POST http://localhost:8081/api/users \
+# Регистрация нового пользователя
+curl -X POST http://localhost:8081/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"Иван Иванов","email":"ivan@example.com"}'
+  -d '{"name":"Иван Иванов","email":"ivan@example.com","password":"password123"}'
+
+# Вход в систему
+curl -X POST http://localhost:8081/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ivan@example.com","password":"password123"}'
+
+# Получение списка пользователей (с JWT токеном)
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" http://localhost:8081/api/v1/users
 
 # Получение пользователя по ID
-curl http://localhost:8081/api/users/1
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" http://localhost:8081/api/v1/users/1
 ```
 
 ## 🌐 Веб-интерфейс
 
 ![Web Application](docs/images/web-app-screenshot.png)
-*React TypeScript приложение для управления пользователями*
+*React TypeScript приложение для управления пользователями с JWT аутентификацией*
 
 Откройте http://localhost:3000 в браузере для доступа к современному React TypeScript интерфейсу с возможностями:
 
-- ✅ Создание новых пользователей с валидацией
-- ✅ Просмотр списка пользователей в реальном времени
-- ✅ Получение деталей пользователя
-- ✅ Ссылки на все сервисы мониторинга (Grafana, Prometheus, Graylog)
-- ✅ Типизированная обработка ошибок
-- ✅ Адаптивный дизайн
-- ✅ TypeScript для безопасности типов
+- ✅ **JWT аутентификация** - регистрация и вход в систему
+- ✅ **Управление пользователями** с защитой ролями
+- ✅ **Автоматический logout** при истечении токена
+- ✅ **Защищенные маршруты** для авторизованных пользователей
+- ✅ **Профиль пользователя** с информацией о сессии
+- ✅ **Просмотр списка пользователей** в реальном времени
+- ✅ **Ссылки на мониторинг** (Grafana, Prometheus, Graylog)
+- ✅ **Типизированная обработка ошибок** с TypeScript
+- ✅ **Адаптивный дизайн** для всех устройств
+- ✅ **Автоматическое обновление токенов** и обработка 401 ошибок
 
 ## 📊 Мониторинг и метрики
 
@@ -151,53 +159,70 @@ curl http://localhost:8081/api/users/1
 
 ### Установка через Helm
 ```bash
-# 1. Создание namespace
-kubectl create namespace grpc-app
+# 1. Запуск minikube (если используется)
+minikube start
 
 # 2. Загрузка Docker образов в minikube (если используется)
-minikube image load k8s_go_grpc_react-grpc-server:latest
-minikube image load k8s_go_grpc_react-http-gateway:latest  
-minikube image load k8s_go_grpc_react-web-app:latest
+eval $(minikube docker-env)
+docker build -t k8s-grpc-app-grpc-server:latest -f Dockerfile.server .
+docker build -t k8s-grpc-app-http-gateway:latest -f Dockerfile.gateway .
+docker build -t k8s-grpc-app-web-app:latest -f web/Dockerfile web/
 
-# 3. Установка приложения с мониторингом
-helm install grpc-react-app ./helm/k8s-grpc-app -n grpc-app
+# 3. Установка приложения с мониторингом в namespace default
+helm install k8s-grpc-app ./helm/k8s-grpc-app
 
 # 4. Проверка статуса подов
-kubectl get pods -n grpc-app
-kubectl get services -n grpc-app
+kubectl get pods | grep k8s-grpc-app
+kubectl get services | grep k8s-grpc-app
 ```
 
 ### Доступ к сервисам
 ```bash
-# Запуск port-forward для всех сервисов
+# Запуск port-forward для всех сервисов (рекомендуется)
+chmod +x k8s-port-forward.sh
 ./k8s-port-forward.sh
 
+# Доступные сервисы:
+# • Веб-приложение: http://localhost:3000
+# • HTTP API:       http://localhost:8081
+# • Grafana:        http://localhost:3001 (admin/admin)
+# • Prometheus:     http://localhost:9091
+# • Graylog:        http://localhost:9000 (admin/admin)
+
 # Или по отдельности:
-kubectl port-forward -n grpc-app service/grpc-react-app-k8s-grpc-app-web-app 3000:80 &
-kubectl port-forward -n grpc-app service/grpc-react-app-k8s-grpc-app-http-gateway 8081:8081 &
-kubectl port-forward -n grpc-app service/grpc-react-app-k8s-grpc-app-grafana 3001:3000 &
-kubectl port-forward -n grpc-app service/grpc-react-app-k8s-grpc-app-prometheus 9091:9090 &
+kubectl port-forward service/k8s-grpc-app-web-app 3000:80 &
+kubectl port-forward service/k8s-grpc-app-http-gateway 8081:8081 &
+kubectl port-forward service/k8s-grpc-app-grafana 3001:3000 &
+kubectl port-forward service/k8s-grpc-app-prometheus 9091:9090 &
+kubectl port-forward service/k8s-grpc-app-graylog 9000:9000 &
 ```
 
 ### Проверка работы
 ```bash
-# Тест API
+# Тест API (сначала войти и получить токен)
 curl http://localhost:8081/health
-curl http://localhost:8081/api/users
 
-# Создание пользователя  
-curl -X POST http://localhost:8081/api/users \
+# Регистрация пользователя
+curl -X POST http://localhost:8081/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"K8s User","email":"k8s@example.com"}'
+  -d '{"name":"K8s User","email":"k8s@example.com","password":"password123"}'
+
+# Вход в систему
+curl -X POST http://localhost:8081/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"k8s@example.com","password":"password123"}'
+
+# Получение списка пользователей (с JWT токеном)
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" http://localhost:8081/api/v1/users
 ```
 
 ### Удаление
 ```bash
 # Удаление приложения
-helm uninstall grpc-react-app -n grpc-app
+helm uninstall k8s-grpc-app
 
-# Удаление namespace
-kubectl delete namespace grpc-app
+# Удаление persistent volumes (опционально)
+kubectl delete pvc --all
 ```
 
 ## 🛠️ Разработка
@@ -283,19 +308,27 @@ docker-compose down -v
 
 ## 📋 API Endpoints
 
+### Публичные endpoints
 | Method | Endpoint | Описание |
 |--------|----------|----------|
 | GET | `/health` | Health check |
-| GET | `/api/users` | Получить всех пользователей |
-| GET | `/api/users/{id}` | Получить пользователя по ID |
-| POST | `/api/users` | Создать пользователя |
+| POST | `/api/v1/auth/register` | Регистрация пользователя |
+| POST | `/api/v1/auth/login` | Вход в систему |
+
+### Защищенные endpoints (требуют JWT токен)
+| Method | Endpoint | Описание |
+|--------|----------|----------|
+| GET | `/api/v1/users` | Получить всех пользователей |
+| GET | `/api/v1/users/{id}` | Получить пользователя по ID |
+| POST | `/api/v1/users` | Создать пользователя |
 
 ### Примеры запросов
 ```json
-// POST /api/users
+// POST /api/v1/auth/register
 {
   "name": "Иван Иванов",
-  "email": "ivan@example.com"
+  "email": "ivan@example.com",
+  "password": "password123"
 }
 
 // Response
@@ -304,9 +337,44 @@ docker-compose down -v
     "id": 1,
     "name": "Иван Иванов", 
     "email": "ivan@example.com",
+    "role": "user",
     "created_at": 1749598180
   },
-  "message": "Пользователь успешно создан"
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "message": "Пользователь успешно зарегистрирован"
+}
+
+// POST /api/v1/auth/login
+{
+  "email": "ivan@example.com",
+  "password": "password123"
+}
+
+// Response
+{
+  "user": {
+    "id": 1,
+    "name": "Иван Иванов",
+    "email": "ivan@example.com",
+    "role": "user"
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "message": "Авторизация успешна"
+}
+
+// GET /api/v1/users (с JWT токеном)
+// Headers: Authorization: Bearer YOUR_JWT_TOKEN
+// Response
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "Иван Иванов",
+      "email": "ivan@example.com",
+      "role": "user",
+      "created_at": 1749598180
+    }
+  ]
 }
 ```
 
