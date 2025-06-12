@@ -1,0 +1,194 @@
+# Общие настройки
+nameOverride: ""
+fullnameOverride: ""
+
+# gRPC сервер
+grpcServer:
+  image:
+    repository: k8s-grpc-server
+    tag: latest
+    pullPolicy: Never
+  
+  service:
+    type: ClusterIP
+    grpcPort: 8080
+    metricsPort: 9090
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+# HTTP Gateway
+httpGateway:
+  image:
+    repository: k8s-grpc-gateway
+    tag: latest
+    pullPolicy: Never
+  
+  service:
+    type: ClusterIP
+    port: 8081
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# React веб-приложение
+webApp:
+  image:
+    repository: k8s-react-web
+    tag: latest
+    pullPolicy: Never
+  
+  service:
+    type: ClusterIP
+    port: 80
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Ingress
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: k8s-grpc-app.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: web-app
+        - path: /api
+          pathType: Prefix
+          service: http-gateway
+  tls: []
+
+# Мониторинг
+monitoring:
+  prometheus:
+    enabled: true
+    image:
+      repository: prom/prometheus
+      tag: latest
+    
+    service:
+      type: ClusterIP
+      port: 9090
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  grafana:
+    enabled: true
+    image:
+      repository: grafana/grafana
+      tag: latest
+    
+    service:
+      type: ClusterIP
+      port: 3000
+    
+    adminPassword: admin
+    
+    resources:
+      limits:
+        cpu: 200m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  graylog:
+    enabled: true
+    
+    # MongoDB для Graylog
+    mongodb:
+      image:
+        repository: mongo
+        tag: 4.4
+      
+      service:
+        type: ClusterIP
+        port: 27017
+      
+      resources:
+        limits:
+          cpu: 500m
+          memory: 1Gi
+        requests:
+          cpu: 250m
+          memory: 512Mi
+    
+    # Elasticsearch для Graylog
+    elasticsearch:
+      image:
+        repository: docker.elastic.co/elasticsearch/elasticsearch
+        tag: 7.17.0
+      
+      service:
+        type: ClusterIP
+        port: 9200
+      
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+    
+    # Graylog сервер
+    server:
+      image:
+        repository: graylog/graylog
+        tag: 4.3
+      
+      service:
+        type: ClusterIP
+        webPort: 9000
+        gelfPort: 12201
+      
+      adminPassword: admin
+      
+      resources:
+        limits:
+          cpu: 500m
+          memory: 1Gi
+        requests:
+          cpu: 250m
+          memory: 512Mi
+
+# Автомасштабирование
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+# Настройки pod'ов
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {} 

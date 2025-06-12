@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_SERVER: ${{ github.repository }}/grpc-server
+  IMAGE_NAME_GATEWAY: ${{ github.repository }}/http-gateway
+  IMAGE_NAME_WEB: ${{ github.repository }}/web-app
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get the previous tag
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        
+        # Generate changelog
+        if [ -n "$PREV_TAG" ]; then
+          echo "## Changes since $PREV_TAG" > CHANGELOG.md
+          git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD >> CHANGELOG.md
+        else
+          echo "## Initial Release" > CHANGELOG.md
+          git log --pretty=format:"- %s (%h)" >> CHANGELOG.md
+        fi
+        
+        # Set output for GitHub release
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        cat CHANGELOG.md >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Release ${{ github.ref_name }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-') }}
+
+  build-and-push-release:
+    name: Build and Push Release Images
+    runs-on: ubuntu-latest
+    needs: create-release
+    
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract version from tag
+      id: version
+      run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Build and push gRPC Server
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.server
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_SERVER }}:${{ steps.version.outputs.version }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_SERVER }}:latest
+        labels: |
+          org.opencontainers.image.title=gRPC Server
+          org.opencontainers.image.description=Microservice gRPC Server
+          org.opencontainers.image.version=${{ steps.version.outputs.version }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and push HTTP Gateway
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.gateway
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GATEWAY }}:${{ steps.version.outputs.version }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GATEWAY }}:latest
+        labels: |
+          org.opencontainers.image.title=HTTP Gateway
+          org.opencontainers.image.description=HTTP to gRPC Gateway
+          org.opencontainers.image.version=${{ steps.version.outputs.version }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and push Web App
+      uses: docker/build-push-action@v5
+      with:
+        context: ./web
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}:${{ steps.version.outputs.version }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}:latest
+        labels: |
+          org.opencontainers.image.title=Web Application
+          org.opencontainers.image.description=React Web Application
+          org.opencontainers.image.version=${{ steps.version.outputs.version }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  update-helm-chart:
+    name: Update Helm Chart
+    runs-on: ubuntu-latest
+    needs: build-and-push-release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract version from tag
+      id: version
+      run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Update Helm chart version
+      run: |
+        sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" helm/k8s-grpc-app/Chart.yaml
+        sed -i "s/^appVersion:.*/appVersion: ${{ steps.version.outputs.version }}/" helm/k8s-grpc-app/Chart.yaml
+
+    - name: Update values.yaml with new image tags
+      run: |
+        sed -i "s/tag:.*/tag: ${{ steps.version.outputs.version }}/" helm/k8s-grpc-app/values.yaml
+
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add helm/k8s-grpc-app/Chart.yaml helm/k8s-grpc-app/values.yaml
+        git commit -m "Update Helm chart to version ${{ steps.version.outputs.version }}" || exit 0
+        git push
+
+  package-helm-chart:
+    name: Package and Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: update-helm-chart
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: main
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: 'latest'
+
+    - name: Package Helm chart
+      run: |
+        helm package helm/k8s-grpc-app --destination ./charts
+
+    - name: Upload Helm chart to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./charts/k8s-grpc-app-*.tgz
+        asset_name: k8s-grpc-app-${{ github.ref_name }}.tgz
+        asset_content_type: application/gzip 

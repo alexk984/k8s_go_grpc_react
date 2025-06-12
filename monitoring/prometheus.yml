@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Метрики самого Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Метрики gRPC сервера
+  - job_name: 'grpc-server'
+    static_configs:
+      - targets: ['grpc-server:9090']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Метрики HTTP Gateway
+  - job_name: 'http-gateway'
+    static_configs:
+      - targets: ['http-gateway:8081']
+    metrics_path: '/health'
+    scrape_interval: 5s 

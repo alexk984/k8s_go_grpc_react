@@ -1,0 +1,202 @@
+{{- if .Values.monitoring.graylog.enabled }}
+---
+# MongoDB для Graylog
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-mongodb
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "k8s-grpc-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mongodb
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-grpc-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: "{{ .Values.monitoring.graylog.mongodb.image.repository }}:{{ .Values.monitoring.graylog.mongodb.image.tag }}"
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_DATABASE
+          value: graylog
+        resources:
+          {{- toYaml .Values.monitoring.graylog.mongodb.resources | nindent 10 }}
+        volumeMounts:
+        - name: mongodb-data
+          mountPath: /data/db
+      volumes:
+      - name: mongodb-data
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-mongodb
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  type: {{ .Values.monitoring.graylog.mongodb.service.type }}
+  ports:
+  - port: {{ .Values.monitoring.graylog.mongodb.service.port }}
+    targetPort: 27017
+    protocol: TCP
+    name: mongodb
+  selector:
+    {{- include "k8s-grpc-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+
+---
+# Elasticsearch для Graylog
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-elasticsearch
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "k8s-grpc-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: elasticsearch
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-grpc-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: elasticsearch
+    spec:
+      containers:
+      - name: elasticsearch
+        image: "{{ .Values.monitoring.graylog.elasticsearch.image.repository }}:{{ .Values.monitoring.graylog.elasticsearch.image.tag }}"
+        ports:
+        - containerPort: 9200
+        - containerPort: 9300
+        env:
+        - name: discovery.type
+          value: single-node
+        - name: ES_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"
+        - name: xpack.security.enabled
+          value: "false"
+        resources:
+          {{- toYaml .Values.monitoring.graylog.elasticsearch.resources | nindent 10 }}
+        volumeMounts:
+        - name: elasticsearch-data
+          mountPath: /usr/share/elasticsearch/data
+      volumes:
+      - name: elasticsearch-data
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-elasticsearch
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  type: {{ .Values.monitoring.graylog.elasticsearch.service.type }}
+  ports:
+  - port: {{ .Values.monitoring.graylog.elasticsearch.service.port }}
+    targetPort: 9200
+    protocol: TCP
+    name: http
+  - port: 9300
+    targetPort: 9300
+    protocol: TCP
+    name: transport
+  selector:
+    {{- include "k8s-grpc-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+
+---
+# Graylog сервер
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-graylog
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: graylog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "k8s-grpc-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: graylog
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-grpc-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: graylog
+    spec:
+      containers:
+      - name: graylog
+        image: "{{ .Values.monitoring.graylog.server.image.repository }}:{{ .Values.monitoring.graylog.server.image.tag }}"
+        ports:
+        - containerPort: 9000
+        - containerPort: 12201
+          protocol: UDP
+        env:
+        - name: GRAYLOG_PASSWORD_SECRET
+          value: "somepasswordpepper"
+        - name: GRAYLOG_ROOT_PASSWORD_SHA2
+          value: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918" # admin
+        - name: GRAYLOG_HTTP_EXTERNAL_URI
+          value: "http://localhost:9000/"
+        - name: GRAYLOG_ELASTICSEARCH_HOSTS
+          value: "http://{{ include "k8s-grpc-app.fullname" . }}-elasticsearch:9200"
+        - name: GRAYLOG_MONGODB_URI
+          value: "mongodb://{{ include "k8s-grpc-app.fullname" . }}-mongodb:27017/graylog"
+        resources:
+          {{- toYaml .Values.monitoring.graylog.server.resources | nindent 10 }}
+        readinessProbe:
+          httpGet:
+            path: /api/system/lbstatus
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/system/lbstatus
+            port: 9000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-graylog
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: graylog
+spec:
+  type: {{ .Values.monitoring.graylog.server.service.type }}
+  ports:
+  - port: {{ .Values.monitoring.graylog.server.service.webPort }}
+    targetPort: 9000
+    protocol: TCP
+    name: web
+  - port: {{ .Values.monitoring.graylog.server.service.gelfPort }}
+    targetPort: 12201
+    protocol: UDP
+    name: gelf
+  selector:
+    {{- include "k8s-grpc-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: graylog
+
+{{- end }} 

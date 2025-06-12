@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-postgres-config
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+data:
+  POSTGRES_DB: "k8s_grpc_app"
+  POSTGRES_USER: "postgres"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-postgres-secret
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+type: Opaque
+data:
+  POSTGRES_PASSWORD: {{ "postgres" | b64enc | quote }}
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-postgres-pvc
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-postgres
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "k8s-grpc-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-grpc-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        envFrom:
+        - configMapRef:
+            name: {{ include "k8s-grpc-app.fullname" . }}-postgres-config
+        - secretRef:
+            name: {{ include "k8s-grpc-app.fullname" . }}-postgres-secret
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: {{ include "k8s-grpc-app.fullname" . }}-postgres-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-postgres
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    {{- include "k8s-grpc-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres 

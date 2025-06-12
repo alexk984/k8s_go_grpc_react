@@ -1,0 +1,322 @@
+{{- if .Values.monitoring.grafana.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-grafana-dashboards
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-grafana
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    grafana_dashboard: "1"
+data:
+  grpc-metrics.json: |
+    {
+      "id": null,
+      "title": "gRPC Сервис Метрики",
+      "tags": ["grpc", "metrics"],
+      "timezone": "browser",
+      "refresh": "5s",
+      "time": {
+        "from": "now-15m",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Общее количество пользователей",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "grpc_users_total",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 50
+                  },
+                  {
+                    "color": "red",
+                    "value": 100
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Количество gRPC запросов за последние 5 минут",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(increase(grpc_requests_total[5m]))",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 100
+                  },
+                  {
+                    "color": "red",
+                    "value": 1000
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "Частота запросов по методам (req/sec)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(grpc_requests_total[1m])",
+              "refId": "A",
+              "legendFormat": "{{ `{{method}}` }} - {{ `{{status}}` }}"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 4
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "barAlignment": 0,
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "spanNulls": false,
+                "insertNulls": false,
+                "showPoints": "auto",
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "axisPlacement": "auto",
+                "axisLabel": "requests/sec",
+                "axisColorMode": "text",
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "axisCenteredZero": false,
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "vis": false
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "Время отклика запросов (percentiles)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(grpc_request_duration_seconds_bucket[1m]))",
+              "refId": "A",
+              "legendFormat": "95-й процентиль"
+            },
+            {
+              "expr": "histogram_quantile(0.50, rate(grpc_request_duration_seconds_bucket[1m]))",
+              "refId": "B",
+              "legendFormat": "50-й процентиль (медиана)"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 12
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "barAlignment": 0,
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "spanNulls": false,
+                "insertNulls": false,
+                "showPoints": "auto",
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "axisPlacement": "auto",
+                "axisLabel": "seconds",
+                "axisColorMode": "text",
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "axisCenteredZero": false,
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "vis": false
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.1
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.5
+                  }
+                ]
+              },
+              "unit": "s"
+            }
+          }
+        }
+      ],
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "liveNow": false,
+      "schemaVersion": 37,
+      "style": "dark",
+      "templating": {
+        "list": []
+      },
+      "timepicker": {},
+      "version": 1
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-grafana-datasources
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-grafana
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://{{ include "k8s-grpc-app.fullname" . }}-prometheus:{{ .Values.monitoring.prometheus.service.port }}
+      isDefault: true
+      editable: true
+    - name: Graylog
+      type: graylog
+      access: proxy
+      url: http://{{ include "k8s-grpc-app.fullname" . }}-graylog:{{ .Values.monitoring.graylog.server.service.webPort }}
+      editable: true
+      jsonData:
+        username: admin
+        password: admin
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-grafana-dashboards-provider
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-grafana
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      editable: true
+      options:
+        path: /var/lib/grafana/dashboards
+{{- end }} 

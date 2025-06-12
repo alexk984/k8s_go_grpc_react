@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-grpc-server
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grpc-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "k8s-grpc-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grpc-server
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-grpc-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: grpc-server
+    spec:
+      containers:
+      - name: grpc-server
+        image: "{{ .Values.grpcServer.image.repository }}:{{ .Values.grpcServer.image.tag }}"
+        imagePullPolicy: {{ .Values.grpcServer.image.pullPolicy }}
+        ports:
+        - name: grpc
+          containerPort: 8080
+          protocol: TCP
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: GRAYLOG_ADDR
+          value: "{{ include "k8s-grpc-app.fullname" . }}-graylog:12201"
+        - name: DB_HOST
+          value: "{{ include "k8s-grpc-app.fullname" . }}-postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "k8s-grpc-app.fullname" . }}-postgres-config
+              key: POSTGRES_DB
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "k8s-grpc-app.fullname" . }}-postgres-config
+              key: POSTGRES_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "k8s-grpc-app.fullname" . }}-postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: DB_SSLMODE
+          value: "disable"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.grpcServer.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-grpc-server
+  labels:
+    {{- include "k8s-grpc-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grpc-server
+spec:
+  ports:
+  - name: grpc
+    port: {{ .Values.grpcServer.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+  - name: http
+    port: 8081
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: {{ .Values.grpcServer.service.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    {{- include "k8s-grpc-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: grpc-server 

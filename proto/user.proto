@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package user;
+
+import "google/api/annotations.proto";
+
+option go_package = "k8s-go-grpc-react/proto";
+
+// Пользователь
+message User {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  string role = 4;
+  bool is_active = 5;
+  int64 created_at = 6;
+}
+
+// Запрос на получение пользователя
+message GetUserRequest {
+  int32 id = 1;
+}
+
+// Запрос на создание пользователя
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+  string role = 4;
+}
+
+// Запрос на регистрацию
+message RegisterRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+// Запрос на вход
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+// Ответ с токеном
+message AuthResponse {
+  string token = 1;
+  User user = 2;
+  string message = 3;
+}
+
+// Ответ с пользователем
+message UserResponse {
+  User user = 1;
+  string message = 2;
+}
+
+// Список пользователей
+message UserListResponse {
+  repeated User users = 1;
+  int32 total = 2;
+}
+
+// Пустой запрос
+message Empty {}
+
+// Сервис для работы с пользователями
+service UserService {
+  // Регистрация нового пользователя
+  rpc Register(RegisterRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/register"
+      body: "*"
+    };
+  }
+
+  // Вход в систему
+  rpc Login(LoginRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/login"
+      body: "*"
+    };
+  }
+
+  // Получить пользователя по ID
+  rpc GetUser(GetUserRequest) returns (UserResponse) {
+    option (google.api.http) = {
+      get: "/v1/users/{id}"
+    };
+  }
+  
+  // Создать нового пользователя (только для админов)
+  rpc CreateUser(CreateUserRequest) returns (UserResponse) {
+    option (google.api.http) = {
+      post: "/v1/users"
+      body: "*"
+    };
+  }
+  
+  // Получить всех пользователей
+  rpc ListUsers(Empty) returns (UserListResponse) {
+    option (google.api.http) = {
+      get: "/v1/users"
+    };
+  }
+} 

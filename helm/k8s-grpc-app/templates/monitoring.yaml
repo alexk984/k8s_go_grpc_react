@@ -1,0 +1,186 @@
+{{- if .Values.monitoring.prometheus.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-prometheus
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-prometheus
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "k8s-grpc-app.name" . }}-prometheus
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "k8s-grpc-app.name" . }}-prometheus
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: prometheus
+          image: "{{ .Values.monitoring.prometheus.image.repository }}:{{ .Values.monitoring.prometheus.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus/'
+            - '--web.console.libraries=/etc/prometheus/console_libraries'
+            - '--web.console.templates=/etc/prometheus/consoles'
+            - '--web.enable-lifecycle'
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus/
+          resources:
+            {{- toYaml .Values.monitoring.prometheus.resources | nindent 12 }}
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: {{ include "k8s-grpc-app.fullname" . }}-prometheus-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-prometheus
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-prometheus
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.monitoring.prometheus.service.type }}
+  ports:
+    - port: {{ .Values.monitoring.prometheus.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ include "k8s-grpc-app.name" . }}-prometheus
+    release: {{ .Release.Name }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-prometheus-config
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-prometheus
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: 'grpc-server'
+        static_configs:
+          - targets: ['{{ include "k8s-grpc-app.fullname" . }}-grpc-server:9090']
+
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+{{- end }}
+
+{{- if .Values.monitoring.grafana.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-grafana
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-grafana
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "k8s-grpc-app.name" . }}-grafana
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "k8s-grpc-app.name" . }}-grafana
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: grafana
+          image: "{{ .Values.monitoring.grafana.image.repository }}:{{ .Values.monitoring.grafana.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: {{ .Values.monitoring.grafana.adminPassword | quote }}
+            - name: GF_INSTALL_PLUGINS
+              value: "grafana-piechart-panel"
+          volumeMounts:
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards
+          resources:
+            {{- toYaml .Values.monitoring.grafana.resources | nindent 12 }}
+      volumes:
+        - name: grafana-datasources
+          configMap:
+            name: {{ include "k8s-grpc-app.fullname" . }}-grafana-datasources
+        - name: grafana-dashboards-provider
+          configMap:
+            name: {{ include "k8s-grpc-app.fullname" . }}-grafana-dashboards-provider
+        - name: grafana-dashboards
+          configMap:
+            name: {{ include "k8s-grpc-app.fullname" . }}-grafana-dashboards
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "k8s-grpc-app.fullname" . }}-grafana
+  labels:
+    app: {{ include "k8s-grpc-app.name" . }}-grafana
+    chart: {{ include "k8s-grpc-app.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.monitoring.grafana.service.type }}
+  ports:
+    - port: {{ .Values.monitoring.grafana.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ include "k8s-grpc-app.name" . }}-grafana
+    release: {{ .Release.Name }}
+
+{{- end }} 
