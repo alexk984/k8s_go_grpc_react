@@ -136,7 +136,10 @@ func (g *Gateway) getUser(w http.ResponseWriter, r *http.Request) {
 	}).Info("Пользователь успешно получен")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.WithError(err).Error("Ошибка кодирования ответа")
+		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
+	}
 }
 
 func (g *Gateway) createUser(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +189,10 @@ func (g *Gateway) createUser(w http.ResponseWriter, r *http.Request) {
 	}).Info("Пользователь успешно создан")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.WithError(err).Error("Ошибка кодирования ответа")
+		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
+	}
 }
 
 func (g *Gateway) listUsers(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +224,10 @@ func (g *Gateway) listUsers(w http.ResponseWriter, r *http.Request) {
 	}).Info("Список пользователей успешно получен")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.WithError(err).Error("Ошибка кодирования ответа")
+		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
+	}
 }
 
 func (g *Gateway) register(w http.ResponseWriter, r *http.Request) {
@@ -266,7 +275,10 @@ func (g *Gateway) register(w http.ResponseWriter, r *http.Request) {
 	}).Info("Пользователь успешно зарегистрирован")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.WithError(err).Error("Ошибка кодирования ответа")
+		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
+	}
 }
 
 func (g *Gateway) login(w http.ResponseWriter, r *http.Request) {
@@ -310,7 +322,10 @@ func (g *Gateway) login(w http.ResponseWriter, r *http.Request) {
 	}).Info("Пользователь успешно вошел в систему")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.WithError(err).Error("Ошибка кодирования ответа")
+		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
+	}
 }
 
 func main() {
@@ -354,7 +369,9 @@ func main() {
 			"path":      r.URL.Path,
 		}).Info("Health check запрос")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.WithError(err).Error("Ошибка записи ответа health check")
+		}
 	})
 
 	log.WithFields(logrus.Fields{

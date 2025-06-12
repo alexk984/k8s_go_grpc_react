@@ -25,7 +25,12 @@ type Config struct {
 
 // GetConfigFromEnv загружает конфигурацию базы данных из переменных окружения
 func GetConfigFromEnv() *Config {
-	port, _ := strconv.Atoi(getEnv("DB_PORT", "5432"))
+	port := 5432
+	if portStr := getEnv("DB_PORT", "5432"); portStr != "" {
+		if p, err := strconv.Atoi(portStr); err == nil {
+			port = p
+		}
+	}
 
 	return &Config{
 		Host:     getEnv("DB_HOST", "localhost"),

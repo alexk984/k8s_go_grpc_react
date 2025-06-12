@@ -147,7 +147,9 @@ func main() {
 		httpMux.Handle("/metrics", promhttp.Handler())
 		httpMux.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("OK"))
+			if _, err := w.Write([]byte("OK")); err != nil {
+				log.Printf("Ошибка записи ответа health check: %v", err)
+			}
 		}))
 
 		log.Printf("HTTP сервер запущен на порту %s", cfg.HTTPPort)

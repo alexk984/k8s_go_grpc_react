@@ -96,7 +96,8 @@ func (s *UserService) Register(ctx context.Context, req *pb.RegisterRequest) (*p
 	}
 
 	// Проверяем, существует ли пользователь с таким email
-	if existingUser, _ := s.userRepo.GetByEmail(ctx, req.Email); existingUser != nil {
+	existingUser, err := s.userRepo.GetByEmail(ctx, req.Email)
+	if err == nil && existingUser != nil {
 		s.recordMetrics("Register", "already_exists", time.Since(start))
 		return nil, status.Error(codes.AlreadyExists, "Пользователь с таким email уже существует")
 	}
@@ -237,7 +238,8 @@ func (s *UserService) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 	}
 
 	// Проверяем, существует ли пользователь с таким email
-	if existingUser, _ := s.userRepo.GetByEmail(ctx, req.Email); existingUser != nil {
+	existingUser, err := s.userRepo.GetByEmail(ctx, req.Email)
+	if err == nil && existingUser != nil {
 		s.recordMetrics("CreateUser", "already_exists", time.Since(start))
 		return nil, status.Error(codes.AlreadyExists, "Пользователь с таким email уже существует")
 	}
